@@ -58,27 +58,30 @@ contract CometInvariant is Test {
         // 20 collaterals, offsets 0..19. Offsets 16..19 live in UserBasic._reserved.
         CometConfiguration.AssetConfig[] memory assets = new CometConfiguration.AssetConfig[](N_COLLATERAL);
         for (uint256 i = 0; i < N_COLLATERAL; i++) {
+            // Cycle collateral decimals through 6 / 8 / 18 (USDC / WBTC / WETH) to stress
+            // the mulPrice / divPrice / scale decimal conversions across all asset offsets.
+            uint8 dec = [6, 8, 18][i % 3];
             MockERC20 c = new MockERC20(
                 string(abi.encodePacked("COL", vm.toString(i))),
                 string(abi.encodePacked("C", vm.toString(i))),
-                18
+                dec
             );
             // vary price a bit per asset
             MockPriceFeed f = new MockPriceFeed(int256((i + 1) * 100e8));
             collaterals.push(c);
             feeds.push(f);
             // Vary collateral factors per asset so the fuzzer explores heterogeneous
-            // borrowing power across the offset-16 boundary (bcf in 0.50..0.865).
+            // borrowing power across the offset-16 boundary (bcf in 0.50..0.85).
             uint64 bcf = uint64(50e16 + (i % 8) * 5e16);        // 0.50 .. 0.85
             uint64 lcf = bcf + 5e15;                            // strictly > bcf
             assets[i] = CometConfiguration.AssetConfig({
                 asset: address(c),
                 priceFeed: address(f),
-                decimals: 18,
+                decimals: dec,
                 borrowCollateralFactor: bcf,
                 liquidateCollateralFactor: lcf,
                 liquidationFactor: 9e17,           // 0.90
-                supplyCap: 1_000_000_000e18
+                supplyCap: uint128(1_000_000_000) * uint128(10) ** dec // 1e9 whole units
             });
         }
 

@@ -115,10 +115,15 @@ contract CometHandler {
     // Collateral
     // ---------------------------------------------------------------------
 
+    function _collAmount(MockERC20 c, uint256 seed) internal view returns (uint256) {
+        // up to ~10000 whole units, scaled to the token's decimals (stays under supply cap)
+        return (_bound(seed, 10_000) + 1) * (10 ** c.decimals());
+    }
+
     function supplyCollateral(uint256 actorSeed, uint256 assetSeed, uint256 amount) external {
         address a = _actor(actorSeed);
         (MockERC20 c, ) = _coll(assetSeed);
-        amount = _bound(amount, 1_000e18) + 1; // up to 1000 units (18 decimals)
+        amount = _collAmount(c, amount);
         c.mint(a, amount);
         vm.prank(a);
         c.approve(address(comet), amount);
@@ -130,7 +135,7 @@ contract CometHandler {
     function withdrawCollateral(uint256 actorSeed, uint256 assetSeed, uint256 amount) external {
         address a = _actor(actorSeed);
         (MockERC20 c, ) = _coll(assetSeed);
-        amount = _bound(amount, 1_000e18) + 1;
+        amount = _collAmount(c, amount);
         vm.prank(a);
         try comet.withdraw(address(c), amount) { callsWithdrawColl++; }
         catch { reverts++; }
@@ -141,7 +146,7 @@ contract CometHandler {
         address to = _actor(toSeed);
         if (from == to) return;
         (MockERC20 c, ) = _coll(assetSeed);
-        amount = _bound(amount, 1_000e18) + 1;
+        amount = _collAmount(c, amount);
         vm.prank(from);
         try comet.transferAsset(to, address(c), amount) { callsTransferColl++; }
         catch { reverts++; }
