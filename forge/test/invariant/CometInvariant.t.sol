@@ -67,12 +67,16 @@ contract CometInvariant is Test {
             MockPriceFeed f = new MockPriceFeed(int256((i + 1) * 100e8));
             collaterals.push(c);
             feeds.push(f);
+            // Vary collateral factors per asset so the fuzzer explores heterogeneous
+            // borrowing power across the offset-16 boundary (bcf in 0.50..0.865).
+            uint64 bcf = uint64(50e16 + (i % 8) * 5e16);        // 0.50 .. 0.85
+            uint64 lcf = bcf + 5e15;                            // strictly > bcf
             assets[i] = CometConfiguration.AssetConfig({
                 asset: address(c),
                 priceFeed: address(f),
                 decimals: 18,
-                borrowCollateralFactor: 8e17,      // 0.80
-                liquidateCollateralFactor: 85e16,  // 0.85
+                borrowCollateralFactor: bcf,
+                liquidateCollateralFactor: lcf,
                 liquidationFactor: 9e17,           // 0.90
                 supplyCap: 1_000_000_000e18
             });
@@ -211,5 +215,7 @@ contract CometInvariant is Test {
         console.log("warp         ", handler.callsWarp());
         console.log("movePrice    ", handler.callsPrice());
         console.log("reverts      ", handler.reverts());
+        console.log(">> borrowsSeen  ", handler.borrowsSeen());
+        console.log(">> absorbsSeized", handler.absorbsSeized());
     }
 }

@@ -32,6 +32,8 @@ contract CometHandler {
     uint256 public callsWarp;
     uint256 public callsPrice;
     uint256 public reverts;
+    uint256 public borrowsSeen;   // withdraws that left the actor with a debt
+    uint256 public absorbsSeized; // absorb calls that actually seized an underwater account
 
     constructor(
         CometWithExtendedAssetList _comet,
@@ -91,7 +93,11 @@ contract CometHandler {
         address a = _actor(actorSeed);
         amount = _bound(amount, 1_000_000e6) + 1;
         vm.prank(a);
-        try comet.withdraw(address(base), amount) { callsWithdrawBase++; }
+        try comet.withdraw(address(base), amount) {
+            callsWithdrawBase++;
+            (int104 p,,,,) = comet.userBasic(a);
+            if (p < 0) borrowsSeen++;
+        }
         catch { reverts++; }
     }
 
@@ -171,7 +177,7 @@ contract CometHandler {
         address[] memory accs = new address[](1);
         accs[0] = a;
         vm.prank(absorber);
-        try comet.absorb(absorber, accs) { callsAbsorb++; }
+        try comet.absorb(absorber, accs) { callsAbsorb++; absorbsSeized++; }
         catch { reverts++; }
     }
 
