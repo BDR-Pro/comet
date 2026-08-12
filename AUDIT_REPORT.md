@@ -75,7 +75,7 @@ targeted multi-step escalation chains. Each was chased to ground:
 
 ---
 
-## 5. Invariant fuzzing results
+## 5. Invariant fuzzing results (see §6 for findings)
 
 Harness: `forge/test/invariant/` (committed). Config: real Comet + 24 collaterals,
 mixed decimals, 3 actors + absorber + buyer, all entry points fuzzed with
@@ -101,7 +101,51 @@ bitmap bit cleared, buyer received exactly the discounted quote, conservation in
 
 ---
 
-## 6. Known, accepted design assumptions (not findings)
+## 6. Findings
+
+No Critical, High, or Medium (bounty-qualifying) issue was found. The following are
+**Informational / Low-severity** observations — real, defensible, and honestly rated.
+None constitute theft, freezing, insolvency, or governance manipulation.
+
+### F-1 — Collateral-factor setters defer invariant validation to deploy-time *(Low / Informational)*
+`Configurator.updateAssetBorrowCollateralFactor`, `updateAssetLiquidateCollateralFactor`,
+and `updateAssetLiquidationFactor` (contracts/Configurator.sol:266–285) write the new
+value **without range checks**. The invariants `borrowCF < liquidateCF` and
+`liquidateCF ≤ 1e18` are only enforced later, in `AssetList.getPackedAssetInternal`
+when `deploy()` clones a new implementation.
+- **Impact:** a staged inconsistent config causes the *next* `deploy()` to revert
+  (`BorrowCFTooLarge`), temporarily blocking parameter rollout. No fund impact.
+- **Access:** governor / market-admin only (trusted roles). **Matches upstream** —
+  not fork-introduced.
+- **Recommendation:** add fail-fast range checks in the setters (defense-in-depth).
+
+### F-2 — No on-chain oracle staleness / sequencer checks *(Informational — accepted design)*
+`getPrice()` validates only `answer > 0`; `updatedAt` / `answeredInRound` are unused.
+Rate-based feeds hardcode `updatedAt = block.timestamp`, defeating any downstream
+staleness gate.
+- **Impact:** stale-feed or L2-sequencer-downtime pricing is a per-deployment risk;
+  Compound intentionally relies on Chainlink heartbeats + collateral-factor buffers.
+- **Recommendation:** per-market, consider staleness bounds where the heartbeat warrants.
+
+### F-3 — LST / rate price feeds forward an unbounded external rate *(Informational — integration risk)*
+`RateBasedScalingPriceFeed`, `EzETHExchangeRatePriceFeed`, `PriceFeedWith4626Support`,
+`WstETHPriceFeed` pass through `getRate()` / `convertToAssets()` / `tokensPerStEth()`
+with **no min/max or deviation bounds**. Collateral valuation trusts the external
+source atomically.
+- **Impact:** *if* a specific live market's rate provider were atomically manipulable
+  (donation, spot-pool skew, ERC4626 share inflation), it would escalate to
+  over-collateralized borrowing → insolvency. **Not exploitable generically** — depends
+  entirely on the deployed provider, which is why this cannot be confirmed from source.
+- **This is the single highest-value lead for continued research** (see §8).
+
+### F-4 — Documented reentrancy / non-standard-token constraints *(Informational — by design)*
+`buyCollateral`'s pre-transfer-hook note, and fee-on-transfer / ERC-777 collateral
+incompatibility, are mitigated by the `nonReentrant` guard plus the governance
+constraint "do not list such assets." Flagged for completeness; not a code defect.
+
+---
+
+## 7. Known, accepted design assumptions (not findings)
 
 These are documented Compound design choices, previously reported and closed as
 out-of-scope — listed so they are not re-litigated:
@@ -116,7 +160,7 @@ out-of-scope — listed so they are not re-litigated:
 
 ---
 
-## 7. Residual risk & recommendation
+## 8. Residual risk & recommendation
 
 The remaining surface with genuine expected value is **per-deployment oracle
 integration**, which cannot be assessed from source alone:
@@ -132,7 +176,7 @@ integration**, which cannot be assessed from source alone:
 
 ---
 
-## 8. Artifacts
+## 9. Artifacts
 
 Committed to branch `claude/compound-v3-security-audit-9j4emv`:
 
